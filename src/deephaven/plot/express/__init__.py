@@ -1,7 +1,12 @@
+from __future__ import annotations
+
+from typing import Any
+
 from deephaven.plugin import Registration, Callback
-from deephaven.plugin.object_type import Exporter, FetchOnlyObjectType
+from deephaven.plugin.object_type import Exporter, FetchOnlyObjectType, BidirectionalObjectType, MessageStream
 
 from .deephaven_figure import DeephavenFigure, export_figure
+from .deephaven_figure.DeephavenFigure import DeephavenFigureListener
 
 from .plots import (
     area,
@@ -37,6 +42,30 @@ from .data import data_generators
 __version__ = "0.0.7.dev0"
 
 NAME = "deephaven.plot.express.DeephavenFigure"
+
+
+
+class DeephavenFigureConnection(MessageStream):
+    def __init__(self, figure_listener: DeephavenFigureListener, client_connection: MessageStream):
+        super().__init__()
+        self.figure_listener = figure_listener
+        self.client_connection = client_connection
+        figure_listener.connection = client_connection
+
+    def on_data(self, payload: bytes, references: list[Any]) -> None:
+        """
+        Args:
+            payload: Payload to execute
+            references: References to objects on the server
+
+        Returns:
+            None
+        """
+        result_payload, result_references = self.figure_listener.execute(payload, references)
+        self.client_connection.on_data(result_payload, result_references)
+
+    def on_close(self):
+        pass
 
 
 class DeephavenFigureType(FetchOnlyObjectType):
@@ -82,6 +111,51 @@ class DeephavenFigureType(FetchOnlyObjectType):
         return export_figure(exporter, figure)
 
 
+
+class DeephavenFigureListenerType(BidirectionalObjectType):
+    """
+    DeephavenFigureType for plugin registration
+
+    """
+
+    @property
+    def name(self) -> str:
+        """
+        Returns the name of the plugin
+
+        Returns:
+            str: The name of the plugin
+
+        """
+        return NAME + "Listener"
+
+    def is_type(self, obj: any) -> bool:
+        """
+        Check if an object is a DeephavenFigure
+
+        Args:
+          obj: any: The object to check
+
+        Returns:
+            bool: True if the object is of the correct type, False otherwise
+        """
+        return isinstance(obj, DeephavenFigureListener)
+
+    def create_client_connection(self, obj: object, connection: MessageStream) -> MessageStream:
+        """
+        Create a client connection for the DeephavenFigure
+
+        Args:
+          obj: object: The object to create the connection for
+          connection: MessageStream: The connection to use
+
+        Returns:
+            MessageStream: The client connection
+        """
+        print("Creating client connection", obj, connection)
+        return DeephavenFigureConnection(obj, connection)
+
+
 class ChartRegistration(Registration):
     """
     Register the DeephavenFigureType
@@ -99,3 +173,4 @@ class ChartRegistration(Registration):
 
         """
         callback.register(DeephavenFigureType)
+        callback.register(DeephavenFigureListenerType)

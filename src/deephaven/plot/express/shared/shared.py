@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from collections.abc import Generator
 
 from deephaven.table import Table, PartitionedTable
@@ -64,3 +65,13 @@ def get_unique_names(
             new_name = '_' + new_name
         new_names[name] = new_name
     return new_names
+
+
+def args_copy(
+        args
+) -> dict:
+    # need to copy 1 layer deep so all keys are maintained within the args
+    copy_dict = {}
+    for k, v in args.items():
+        copy_dict[k] = copy.copy(v) if isinstance(v, dict) else v
+    return copy_dict

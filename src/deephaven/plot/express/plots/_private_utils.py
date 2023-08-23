@@ -3,15 +3,20 @@ from __future__ import annotations
 from functools import partial
 from collections.abc import Callable
 from typing import Any
+import copy
 
 import plotly.express as px
 
 from deephaven.table import Table, PartitionedTable
+from deephaven import time_table
+from deephaven.execution_context import get_exec_ctx
+from deephaven.table_listener import listen
 
 from ._layer import layer
 from .PartitionManager import PartitionManager
 from ._update_wrapper import unsafe_figure_update_wrapper
-from ..deephaven_figure import generate_figure, DeephavenFigure
+from ..deephaven_figure import generate_figure, DeephavenFigure, DeephavenFigureListener
+from ..shared import args_copy
 from ._update_wrapper import default_callback
 
 
@@ -181,13 +186,13 @@ def apply_args_groups(
     sync_dict.sync_pop()
 
 
-def process_args(
+def create_deephaven_figure(
         args: dict[str, Any],
         groups: set[str] = None,
         add: dict[str, Any] = None,
         pop: list[str] = None,
         remap: dict[str, str] = None,
-        px_func=Callable
+        px_func: Callable = None,
 ) -> DeephavenFigure:
     """Process the provided args
 
@@ -237,7 +242,62 @@ def process_args(
         args.pop("unsafe_update_figure")
     )
 
-    return update_wrapper(partitioned.create_figure())
+    return update_wrapper(partitioned.create_figure()), partitioned.partitioned_table
+
+
+def process_args(
+        args: dict[str, Any],
+        groups: set[str] = None,
+        add: dict[str, Any] = None,
+        pop: list[str] = None,
+        remap: dict[str, str] = None,
+        px_func: Callable = None,
+) -> DeephavenFigureListener:
+    """Process the provided args
+
+    Args:
+      args: dict[str, Any]: A dictionary of args to process
+      groups: set[str]:  (Default value = None)
+        A set of groups that apply transformations to the args
+      add: dict[str, Any] (Default value = None)
+        A dictionary to add to the args
+      pop: list[str]:  (Default value = None)
+        A list of keys to remove from the args
+      remap: dict[str, str]:  (Default value = None)
+        A dictionary mapping of keys to keys
+      px_func: Callable: the function (generally from px) to use to create the figure
+
+    Returns:
+      partial: The new figure
+
+    """
+    use_args = locals()
+    orig_args = args_copy(use_args)
+    orig_func = create_deephaven_figure
+
+    print(orig_args)
+
+    new_fig, table = orig_func(**use_args)
+
+    exec_ctx = get_exec_ctx()
+
+    # these are needed for when partitions are added
+    listener = DeephavenFigureListener(
+        table=table, orig_func=orig_func, orig_args=orig_args, fig=new_fig, exec_ctx=exec_ctx
+    )
+
+    def pr(a, b):
+        print(a, b)
+
+    #tale = time_table("PT1S").update(formulas=["X=i"]).tail(5)
+    #listen(table.table, pr)
+
+
+    if isinstance(table, PartitionedTable):
+        # only need to listen if it is possible that partitons will be added
+        listen(table.table, listener)
+
+    return listener
 
 
 class SyncDict:
@@ -315,7 +375,8 @@ def shared_violin(
     set_shared_defaults(args)
     args["violinmode"] = args.get("violinmode", "group")
     args["points"] = args.get("points", "outliers")
-    return process_args(args, {"marker", "preprocess_violin", "supports_lists"}, px_func=px.violin)
+    return create_deephaven_figure(args, {"marker", "preprocess_violin", "supports_lists"},
+                                   px_func=px.violin)[0]
 
 
 def shared_box(
@@ -332,7 +393,8 @@ def shared_box(
     set_shared_defaults(args)
     args["boxmode"] = args.get("boxmode", "group")
     args["points"] = args.get("points", "outliers")
-    return process_args(args, {"marker", "preprocess_violin", "supports_lists"}, px_func=px.box)
+    return create_deephaven_figure(args, {"marker", "preprocess_violin", "supports_lists"},
+                                   px_func=px.box)[0]
 
 
 def shared_strip(
@@ -348,7 +410,8 @@ def shared_strip(
     """
     set_shared_defaults(args)
     args["stripmode"] = args.get("stripmode", "group")
-    return process_args(args, {"marker", "preprocess_violin", "supports_lists"}, px_func=px.strip)
+    return create_deephaven_figure(args, {"marker", "preprocess_violin", "supports_lists"},
+                                   px_func=px.strip)[0]
 
 
 def shared_histogram(
@@ -374,9 +437,9 @@ def shared_histogram(
     args["bargap"] = 0
     args["hist_val_name"] = args["histfunc"]
 
-    return process_args(
+    return create_deephaven_figure(
         args, {"bar", "preprocess_hist", "supports_lists"}, px_func=px.bar
-    )
+    )[0]
 
 
 def marginal_axis_update(

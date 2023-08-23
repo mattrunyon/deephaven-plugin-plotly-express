@@ -3,12 +3,14 @@ from __future__ import annotations
 import json
 from collections.abc import Generator
 from typing import Callable, Any
-
 from plotly.graph_objects import Figure
 
-from deephaven.plugin.object_type import Exporter
+from deephaven.table_listener import TableListener
+from deephaven.table import PartitionedTable
+# from deephaven.plugin.object_type import Exporter
 
 from ..data_mapping import DataMapping
+from ..shared import args_copy
 
 
 def export_figure(
@@ -70,6 +72,123 @@ def has_arg(
             return check(call_args)
     return False
     # check is either a function or string
+
+
+class Reference:
+    """A reference to an object
+
+    Attributes:
+        index: int: The index of the reference
+        obj: object: The object that the reference points to
+    """
+
+    def __init__(
+            self: Reference,
+            index: int,
+            obj: object
+    ):
+        self.index = index
+        self.obj = obj
+
+
+class Exporter:
+
+    def __init__(
+            self: DeephavenFigureExporter,
+    ):
+        self.references = {}
+        pass
+
+    def reference(self: Exporter, obj: object) -> Reference:
+        """Creates a reference for an object, ensuring that it is exported for
+            use on the client. Each time this is called, a new reference will be
+            returned, with the index of the export in the data to be sent to the
+            client.
+
+            Args:
+            obj: object: The object to create a reference for
+
+            Returns:
+                Reference: The reference to the object
+
+            """
+        if obj not in self.references:
+            self.references[obj] = Reference(len(self.references), obj)
+        return self.references[obj]
+
+    def reference_list(self: Exporter) -> list[Any]:
+        """Creates a list of references for a list of objects
+
+            Args:
+              objs: list[object]: The list of objects to create references for
+
+            Returns:
+                list[Reference]: The list of references to the objects
+
+            """
+        return list(self.references.keys())
+
+
+class DeephavenFigureListener(TableListener):
+
+    def __init__(self, table, orig_func, orig_args, fig, exec_ctx):
+        self.table = table
+        self.partitions = self.partition_count()
+        self.deephaven_figure = None
+        self.orig_func = orig_func
+        # these args should always be copied before use to prevent
+        # modification
+        # additionally, the compound elements themselves should not be modified
+        self.orig_args = orig_args
+        # the table should be the existing table
+        # this will eliminate lots of the processing done as the
+        # partitioned table is already created
+        self.orig_args["args"]["table"] = table
+        self.connection = None
+        self.exporter = Exporter()
+        self.fig = fig
+        self.exec_ctx = exec_ctx
+
+    def partition_count(self):
+        if isinstance(self.table, PartitionedTable):
+            return len(self.table.constituent_tables)
+        return -1
+
+    def on_update(self, update, is_replay) -> None:
+        # because this is listening to the partitioed meta table, it will
+        # always trigger a rerender
+        print(update, is_replay)
+        self.partitions = self.partition_count()
+        new_args = args_copy(self.orig_args)
+        with self.exec_ctx:
+            new_fig, _ = self.orig_func(**new_args)
+            self.fig = new_fig
+            new_fig.to_json(exporter=self.exporter)
+            #print(self.exporter.reference_list())
+
+            if self.connection:
+                # attempt to send
+                self.connection.on_data(
+                    export_figure(self.exporter, new_fig),
+                    self.exporter.reference_list())
+
+    def execute(
+            self: DeephavenFigureListener,
+            payload: bytes,
+            references: list[Any]
+    ) -> tuple[bytes, list[Any]]:
+        """Execute the DeephavenFigure
+
+        Args:
+          payload: bytes: The payload to execute
+          references: list[Any]: The references to use
+
+        Returns:
+          tuple[bytes, list[Any]]: The result payload and references
+
+        """
+        # todo: figure out what can be received here
+        return payload, references
 
 
 class DeephavenFigure:
