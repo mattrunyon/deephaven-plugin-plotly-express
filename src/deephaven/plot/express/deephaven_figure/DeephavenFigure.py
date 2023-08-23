@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from collections.abc import Generator
 from typing import Callable, Any
 from plotly.graph_objects import Figure
@@ -129,9 +130,9 @@ class Exporter:
         return list(self.references.keys())
 
 
-class DeephavenFigureListener(TableListener):
+class DeephavenFigureListener:
 
-    def __init__(self, table, orig_func, orig_args, fig, exec_ctx):
+    def __init__(self, table, orig_func, orig_args, exec_ctx):
         self.table = table
         self.partitions = self.partition_count()
         self.deephaven_figure = None
@@ -146,7 +147,6 @@ class DeephavenFigureListener(TableListener):
         self.orig_args["args"]["table"] = table
         self.connection = None
         self.exporter = Exporter()
-        self.fig = fig
         self.exec_ctx = exec_ctx
 
     def partition_count(self):
@@ -155,22 +155,26 @@ class DeephavenFigureListener(TableListener):
         return -1
 
     def on_update(self, update, is_replay) -> None:
-        # because this is listening to the partitioed meta table, it will
+        # because this is listening to the partitioned meta table, it will
         # always trigger a rerender
-        print(update, is_replay)
-        self.partitions = self.partition_count()
-        new_args = args_copy(self.orig_args)
         with self.exec_ctx:
+            self.partitions = self.partition_count()
+            new_args = args_copy(self.orig_args)
             new_fig, _ = self.orig_func(**new_args)
-            self.fig = new_fig
-            new_fig.to_json(exporter=self.exporter)
-            #print(self.exporter.reference_list())
+            new_fig.to_dict(exporter=self.exporter)
 
             if self.connection:
                 # attempt to send
+                message = {
+                    "type": "NEW_FIGURE",
+                    "figure": new_fig.to_dict(exporter=self.exporter)
+                }
+
                 self.connection.on_data(
-                    export_figure(self.exporter, new_fig),
+                    json.dumps(message).encode(),
                     self.exporter.reference_list())
+
+            return new_fig
 
     def execute(
             self: DeephavenFigureListener,
@@ -237,6 +241,11 @@ class DeephavenFigure:
         self._data_mappings = data_mappings if data_mappings else []
 
         self.has_subplots = has_subplots
+
+        self.listener = None
+
+        # lock to prevent multiple threads from updating the figure at once
+        self.fig_lock = threading.Lock()
 
     def copy_mappings(
             self: DeephavenFigure,
@@ -311,3 +320,24 @@ class DeephavenFigure:
             "deephaven": deephaven
         }
         return json.dumps(payload)
+
+    def initialize_listener(self, table, orig_func, orig_args, exec_ctx):
+        self.listener = DeephavenFigureListener(table, orig_func, orig_args, exec_ctx)
+        return self.on_update
+
+    def on_update(self, update, is_replay):
+        if self.listener is None:
+            raise ValueError("Listener not initialized")
+
+        with self.fig_lock:
+            new_fig = self.listener.on_update(update, is_replay)
+
+            self.fig = new_fig.fig
+            self.call = new_fig.call
+            self.call_args = new_fig.call_args
+            self.trace_generator = new_fig.trace_generator
+            self.has_template = new_fig.has_template
+            self.has_color = new_fig.has_color
+            self._data_mappings = new_fig._data_mappings
+            self.has_subplots = new_fig.has_subplots
+

@@ -44,9 +44,8 @@ __version__ = "0.0.7.dev0"
 NAME = "deephaven.plot.express.DeephavenFigure"
 
 
-
 class DeephavenFigureConnection(MessageStream):
-    def __init__(self, figure_listener: DeephavenFigureListener, client_connection: MessageStream):
+    def __init__(self, figure_listener: DeephavenFigure, client_connection: MessageStream):
         super().__init__()
         self.figure_listener = figure_listener
         self.client_connection = client_connection
@@ -127,7 +126,7 @@ class DeephavenFigureListenerType(BidirectionalObjectType):
             str: The name of the plugin
 
         """
-        return NAME + "Listener"
+        return NAME + "New"
 
     def is_type(self, obj: any) -> bool:
         """
@@ -139,9 +138,9 @@ class DeephavenFigureListenerType(BidirectionalObjectType):
         Returns:
             bool: True if the object is of the correct type, False otherwise
         """
-        return isinstance(obj, DeephavenFigureListener)
+        return isinstance(obj, DeephavenFigure)
 
-    def create_client_connection(self, obj: object, connection: MessageStream) -> MessageStream:
+    def create_client_connection(self, obj: DeephavenFigure, connection: MessageStream) -> MessageStream:
         """
         Create a client connection for the DeephavenFigure
 

@@ -115,7 +115,7 @@ def violin(
 
     args = locals()
 
-    return shared_violin(**args)
+    return shared_violin(marginal=False, **args)
 
 
 def box(
@@ -219,7 +219,7 @@ def box(
 
     args = locals()
 
-    return shared_box(**args)
+    return shared_box(marginal=False, **args)
 
 
 def strip(
@@ -315,7 +315,7 @@ def strip(
 
     args = locals()
 
-    return shared_strip(**args)
+    return shared_strip(marginal=False, **args)
 
 
 def _ecdf(
@@ -363,7 +363,7 @@ def _ecdf(
     Returns:
 
     """
-    #todo: not fully implemented
+    # todo: not fully implemented
     line_shape = "hv"
     # rangemode = "tozero"
 
@@ -389,6 +389,7 @@ def _ecdf(
     return update_wrapper(
         create_layered("x") if x else create_layered("y", orientation="h")
     )
+
 
 def histogram(
         table: Table = None,
@@ -529,4 +530,4 @@ def histogram(
     """
     args = locals()
 
-    return shared_histogram(**args)
+    return shared_histogram(marginal=False, **args)

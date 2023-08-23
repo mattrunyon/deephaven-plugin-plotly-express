@@ -252,7 +252,7 @@ def process_args(
         pop: list[str] = None,
         remap: dict[str, str] = None,
         px_func: Callable = None,
-) -> DeephavenFigureListener:
+) -> DeephavenFigure:
     """Process the provided args
 
     Args:
@@ -275,29 +275,20 @@ def process_args(
     orig_args = args_copy(use_args)
     orig_func = create_deephaven_figure
 
-    print(orig_args)
-
     new_fig, table = orig_func(**use_args)
 
     exec_ctx = get_exec_ctx()
 
     # these are needed for when partitions are added
-    listener = DeephavenFigureListener(
-        table=table, orig_func=orig_func, orig_args=orig_args, fig=new_fig, exec_ctx=exec_ctx
+    on_update = new_fig.initialize_listener(
+        table=table, orig_func=orig_func, orig_args=orig_args, exec_ctx=exec_ctx
     )
 
-    def pr(a, b):
-        print(a, b)
-
-    #tale = time_table("PT1S").update(formulas=["X=i"]).tail(5)
-    #listen(table.table, pr)
-
-
     if isinstance(table, PartitionedTable):
-        # only need to listen if it is possible that partitons will be added
-        listen(table.table, listener)
+        # only need to listen if it is possible that partitions will be added
+        listen(table.table, on_update)
 
-    return listener
+    return new_fig
 
 
 class SyncDict:
@@ -360,13 +351,24 @@ def set_shared_defaults(args: dict[str, Any]) -> None:
     args["x"] = args.get("x", None)
     args["y"] = args.get("y", None)
 
+def shared_marginal(
+    marginal: bool,
+    func: Callable,
+    groups: set[str],
+    **args: Any
+) -> DeephavenFigure:
+    if not marginal:
+        return process_args(args, groups, px_func=func)
+    return create_deephaven_figure(args, groups, px_func=func)[0]
 
 def shared_violin(
-        **args: Any
+        marginal=True, **args: Any,
 ) -> DeephavenFigure:
     """
+    Create a violin figure
 
     Args:
+                marginal: bool:  (Default value = True) Whether this is a marginal figure or not
         **args: Any: The args used for the figure
 
     Returns:
@@ -375,16 +377,22 @@ def shared_violin(
     set_shared_defaults(args)
     args["violinmode"] = args.get("violinmode", "group")
     args["points"] = args.get("points", "outliers")
-    return create_deephaven_figure(args, {"marker", "preprocess_violin", "supports_lists"},
-                                   px_func=px.violin)[0]
+
+    func = px.violin
+    groups = {"marker", "preprocess_violin", "supports_lists"}
+
+    return shared_marginal(marginal, func, groups, **args)
 
 
 def shared_box(
+        marginal=True,
         **args: Any
 ) -> DeephavenFigure:
     """
+    Create a box figure
 
     Args:
+        marginal: bool:  (Default value = True) Whether this is a marginal figure or not
         **args: Any: The args used for the figure
 
     Returns:
@@ -393,16 +401,22 @@ def shared_box(
     set_shared_defaults(args)
     args["boxmode"] = args.get("boxmode", "group")
     args["points"] = args.get("points", "outliers")
-    return create_deephaven_figure(args, {"marker", "preprocess_violin", "supports_lists"},
-                                   px_func=px.box)[0]
+
+    func = px.box
+    groups = {"marker", "preprocess_violin", "supports_lists"}
+
+    return shared_marginal(marginal, func, groups, **args)
 
 
 def shared_strip(
+        marginal=True,
         **args: Any
 ) -> DeephavenFigure:
     """
+    Create a strip figure
 
     Args:
+        marginal: bool:  (Default value = True) Whether this is a marginal figure or not
         **args: Any: The args used for the figure
 
     Returns:
@@ -410,16 +424,22 @@ def shared_strip(
     """
     set_shared_defaults(args)
     args["stripmode"] = args.get("stripmode", "group")
-    return create_deephaven_figure(args, {"marker", "preprocess_violin", "supports_lists"},
-                                   px_func=px.strip)[0]
+
+    func = px.strip
+    groups = {"marker", "preprocess_violin", "supports_lists"}
+
+    return shared_marginal(marginal, func, groups, **args)
 
 
 def shared_histogram(
+        marginal=True,
         **args: Any
 ) -> DeephavenFigure:
     """
+    Create a histogram figure
 
     Args:
+        marginal: bool:  (Default value = True) Whether this is a marginal figure or not
         **args: Any: The args used for the figure
 
     Returns:
@@ -437,10 +457,10 @@ def shared_histogram(
     args["bargap"] = 0
     args["hist_val_name"] = args["histfunc"]
 
-    return create_deephaven_figure(
-        args, {"bar", "preprocess_hist", "supports_lists"}, px_func=px.bar
-    )[0]
+    func = px.histogram
+    groups = {"bar", "preprocess_hist", "supports_lists"}
 
+    return shared_marginal(marginal, func, groups, **args)
 
 def marginal_axis_update(
         matches: str = None
