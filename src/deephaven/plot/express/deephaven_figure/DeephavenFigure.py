@@ -176,24 +176,6 @@ class DeephavenFigureListener:
 
             return new_fig
 
-    def execute(
-            self: DeephavenFigureListener,
-            payload: bytes,
-            references: list[Any]
-    ) -> tuple[bytes, list[Any]]:
-        """Execute the DeephavenFigure
-
-        Args:
-          payload: bytes: The payload to execute
-          references: list[Any]: The references to use
-
-        Returns:
-          tuple[bytes, list[Any]]: The result payload and references
-
-        """
-        # todo: figure out what can be received here
-        return payload, references
-
 
 class DeephavenFigure:
     """A DeephavenFigure that contains a plotly figure and mapping from Deephaven
@@ -341,3 +323,20 @@ class DeephavenFigure:
             self._data_mappings = new_fig._data_mappings
             self.has_subplots = new_fig.has_subplots
 
+    def execute(
+            self: DeephavenFigureListener,
+            payload: bytes,
+            references: list[Any]
+    ) -> tuple[bytes, list[Any]]:
+        """Execute the DeephavenFigure
+
+        Args:
+          payload: bytes: The payload to execute
+          references: list[Any]: The references to use
+
+        Returns:
+          tuple[bytes, list[Any]]: The result payload and references
+
+        """
+        # todo: figure out what can be received here
+        return payload, references

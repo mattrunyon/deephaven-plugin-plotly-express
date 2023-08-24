@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from deephaven.plugin import Registration, Callback
@@ -151,8 +152,9 @@ class DeephavenFigureListenerType(BidirectionalObjectType):
         Returns:
             MessageStream: The client connection
         """
-        print("Creating client connection", obj, connection)
-        return DeephavenFigureConnection(obj, connection)
+        connection = DeephavenFigureConnection(obj, connection)
+        connection.on_data(json.dumps({"type": "INIT"}).encode(), [])
+        return connection
 
 
 class ChartRegistration(Registration):
