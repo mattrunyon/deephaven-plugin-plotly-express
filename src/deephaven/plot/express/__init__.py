@@ -7,7 +7,7 @@ from deephaven.plugin import Registration, Callback
 from deephaven.plugin.object_type import Exporter, FetchOnlyObjectType, BidirectionalObjectType, MessageStream
 
 from .deephaven_figure import DeephavenFigure, export_figure
-from .deephaven_figure.DeephavenFigure import DeephavenFigureListener
+from .deephaven_figure.DeephavenFigure import DeephavenFigureListener, Exporter
 
 from .plots import (
     area,
@@ -127,7 +127,7 @@ class DeephavenFigureListenerType(BidirectionalObjectType):
             str: The name of the plugin
 
         """
-        return NAME + "New"
+        return NAME
 
     def is_type(self, obj: any) -> bool:
         """
@@ -152,9 +152,12 @@ class DeephavenFigureListenerType(BidirectionalObjectType):
         Returns:
             MessageStream: The client connection
         """
-        connection = DeephavenFigureConnection(obj, connection)
-        connection.on_data(json.dumps({"type": "INIT"}).encode(), [])
-        return connection
+        c = DeephavenFigureConnection(obj, connection)
+        exporter = Exporter()
+        data = export_figure(exporter, obj)
+        connection.on_data(data, exporter.reference_list())
+        obj.add_connection(connection)
+        return c
 
 
 class ChartRegistration(Registration):
@@ -173,5 +176,5 @@ class ChartRegistration(Registration):
             A function to call after registration
 
         """
-        callback.register(DeephavenFigureType)
+        # callback.register(DeephavenFigureType)
         callback.register(DeephavenFigureListenerType)

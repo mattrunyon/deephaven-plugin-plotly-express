@@ -28,7 +28,12 @@ def export_figure(
       bytes: The figure as bytes
 
     """
-    return figure.to_json(exporter).encode()
+    message = {
+        "type": "NEW_FIGURE",
+        "figure": figure.to_dict(exporter)
+    }
+
+    return json.dumps(message).encode()
 
 
 def has_color_args(
@@ -322,6 +327,11 @@ class DeephavenFigure:
             self.has_color = new_fig.has_color
             self._data_mappings = new_fig._data_mappings
             self.has_subplots = new_fig.has_subplots
+
+    def add_connection(self, connection):
+        if self.listener is None:
+            return
+        self.listener.connection = connection
 
     def execute(
             self: DeephavenFigureListener,
